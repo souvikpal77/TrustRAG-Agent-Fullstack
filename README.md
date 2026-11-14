@@ -301,7 +301,7 @@ All settings are read from environment variables or a `.env` file (`backend/.env
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | `postgresql+asyncpg://…/trustrag` | Async SQLAlchemy URL |
+| `DATABASE_URL` | `postgresql+asyncpg://…/trustrag` | Async SQLAlchemy URL (`postgres://` and `postgresql://` are rewritten to `postgresql+asyncpg://`) |
 | `DB_POOL_SIZE` | `10` | Connection pool size |
 | `DB_MAX_OVERFLOW` | `20` | Pool overflow |
 | `DB_ECHO` | `false` | SQL echo logging |
@@ -379,6 +379,8 @@ SEED_MITRE=true
 CORS_ORIGINS=https://<your-project>.vercel.app
 CORS_ORIGIN_REGEX=https://([a-z0-9-]+\.)*vercel\.app
 ```
+
+`DATABASE_URL` may be pasted verbatim from Render (`postgres://…` or `postgresql://…`); the backend rewrites it to `postgresql+asyncpg://` at startup, so the synchronous `psycopg2` driver is never selected. `asyncpg` is pinned in `backend/requirements.txt`.
 
 Run `alembic upgrade head` as a one-off job or release step before the first deploy (`AUTO_CREATE_SCHEMA` stays `false` in production). Render's free tier sleeps when idle; the frontend health poller tolerates the cold start and re-checks on tab focus.
 

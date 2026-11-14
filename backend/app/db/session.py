@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 
+# ``settings.database_url`` is normalised to an async scheme by config.py
+# (postgres:// -> postgresql+asyncpg://, sqlite:// -> sqlite+aiosqlite://), so
+# create_async_engine always resolves an async driver.
 _db_url = make_url(settings.database_url)
 _engine_kwargs: dict[str, object] = {
     "echo": settings.db_echo,

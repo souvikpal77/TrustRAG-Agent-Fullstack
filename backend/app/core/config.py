@@ -17,6 +17,19 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+# Managed Postgres providers (Render, Heroku, Railway) hand out plain
+# ``postgres://`` / ``postgresql://`` URLs, which make SQLAlchemy load the
+# synchronous psycopg2 driver. The async engine requires asyncpg, so map every
+# sync Postgres scheme onto ``postgresql+asyncpg``.
+_POSTGRES_ASYNC_SCHEMES = {
+    "postgres": "postgresql+asyncpg",
+    "postgresql": "postgresql+asyncpg",
+    "postgresql+psycopg": "postgresql+asyncpg",
+    "postgresql+psycopg2": "postgresql+asyncpg",
+    "postgresql+asyncpg": "postgresql+asyncpg",
+}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
@@ -103,6 +116,29 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalise_database_url(cls, value: object) -> object:
+        """Force the async driver required by ``create_async_engine``.
+
+        Accepts the URL shapes hosting providers actually inject
+        (``postgres://``, ``postgresql://``, ``postgresql+psycopg2://``) and
+        rewrites them to ``postgresql+asyncpg://``. Async and SQLite URLs are
+        left untouched.
+        """
+        if not isinstance(value, str) or not value.strip():
+            return value
+        url = value.strip()
+        scheme, separator, remainder = url.partition("://")
+        if not separator:
+            return url
+        scheme = scheme.lower()
+        if scheme in _POSTGRES_ASYNC_SCHEMES:
+            return f"{_POSTGRES_ASYNC_SCHEMES[scheme]}://{remainder}"
+        if scheme == "sqlite":
+            return f"sqlite+aiosqlite://{remainder}"
+        return url
 
     @property
     def cors_origin_list(self) -> list[str]:
