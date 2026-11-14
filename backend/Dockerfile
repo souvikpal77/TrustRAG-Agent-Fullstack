@@ -26,10 +26,14 @@ EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
 
+# Switch back to root to create the system user and set permissions
+USER root
+
 # Create and switch to the non-root user
 RUN addgroup --system trustrag && adduser --system --ingroup trustrag trustrag \
     && chown -R trustrag:trustrag /app
 
+# Switch to the non-root user for running the app
 USER trustrag
 
 # Expose port
