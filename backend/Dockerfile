@@ -25,3 +25,13 @@ USER trustrag
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+
+# (Keep all your existing build and dependency installation steps above)
+
+# Copy the start script into the container
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Expose port and run the start script
+EXPOSE 8000
+CMD ["/app/start.sh"]
