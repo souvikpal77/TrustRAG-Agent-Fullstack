@@ -51,7 +51,7 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("GOOGLE_API_KEY", "GEMINI_API_KEY"),
     )
-    gemini_models: str = "gemini-3.8-flash,gemini-3.5-flash-lite"
+    gemini_models: str = "gemini-3.5-flash-lite,gemini-3.8-flash"
     gemini_temperature: float = Field(default=0.2, ge=0.0, le=1.0)
     gemini_max_output_tokens: int = Field(default=2048, ge=256, le=16384)
     gemini_timeout_seconds: int = Field(default=30, ge=5, le=300)
@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     @property
     def gemini_model_list(self) -> list[str]:
         models = _split_csv(self.gemini_models)
-        return models or ["gemini-3.8-flash"]
+        return models or ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
 
     @property
     def gemini_enabled(self) -> bool:

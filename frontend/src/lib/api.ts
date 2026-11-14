@@ -46,6 +46,10 @@ import type {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
 const ACTOR_KEY = "trustrag.actor";
 
+// Health checks must never hang the UI: a slow or half-open request is treated
+// as a failed check after this budget.
+const HEALTH_TIMEOUT_MS = 5_000;
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -156,7 +160,10 @@ export const api = {
   baseUrl: API_BASE,
 
   // ------------------------------------------------------------------ system
-  health: () => request<HealthResponse>("/api/health"),
+  health: () =>
+    request<HealthResponse>("/api/health", {
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+    }),
   meta: () => request<RuntimeMetaResponse>("/api/meta"),
 
   // --------------------------------------------------------------- documents

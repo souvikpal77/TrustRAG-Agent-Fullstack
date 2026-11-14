@@ -310,7 +310,7 @@ All settings are read from environment variables or a `.env` file (`backend/.env
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GOOGLE_API_KEY` | empty | Enables live Gemini generation, verification, and embeddings |
-| `GEMINI_MODELS` | `gemini-3.8-flash,…` | Ordered fallback chain |
+| `GEMINI_MODELS` | `gemini-3.5-flash-lite,…` | Ordered fallback chain (first answering model wins) |
 | `GEMINI_TEMPERATURE` | `0.2` | Generation temperature |
 | `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | Output cap |
 | `GEMINI_TIMEOUT_SECONDS` | `30` | Per-request timeout |

@@ -26,6 +26,13 @@ _JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 _MODEL_TIMEOUT_COOLDOWN_SECONDS = 120.0
 
 
+def _load_genai_types() -> Any:
+    """Import the SDK types module once, away from the event loop."""
+    from google.genai import types
+
+    return types
+
+
 @dataclass(slots=True)
 class GeminiResult:
     text: str
@@ -93,6 +100,15 @@ class GeminiService:
                 return None
         return self._client
 
+    def prewarm(self) -> bool:
+        """Import the SDK and build the client away from the event loop.
+
+        The first ``google-genai`` import can take several seconds on a cold
+        process. Running it during startup keeps the first user request (and the
+        ``/health`` poller) from stalling on that one-time cost.
+        """
+        return self._get_client() is not None
+
     def _without_cooling_models(self, models: list[str]) -> list[str]:
         now = time.monotonic()
         ready = [model for model in models if self._model_cooldown.get(model, 0.0) <= now]
@@ -114,13 +130,15 @@ class GeminiService:
         model_override: str | None = None,
         max_output_tokens: int | None = None,
     ) -> GeminiResult:
-        client = self._get_client()
+        # Offload the one-time SDK import/client construction; it can take
+        # seconds on a cold process and must not block the event loop.
+        client = await asyncio.to_thread(self._get_client)
         if client is None:
             raise ServiceUnavailableError(
                 "Gemini is not configured. Set GOOGLE_API_KEY (or GEMINI_API_KEY) on the server to enable generation."
             )
 
-        from google.genai import types
+        types = await asyncio.to_thread(_load_genai_types)
 
         models = [model_override] if model_override else []
         models.extend(model for model in self.models if model not in models)

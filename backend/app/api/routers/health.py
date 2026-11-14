@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,13 +15,24 @@ from app.schemas.common import HealthResponse, RuntimeMetaResponse
 
 router = APIRouter(tags=["system"])
 
+# The liveness probe must return quickly even if the database is slow or locked.
+_HEALTH_DB_TIMEOUT_SECONDS = 2.0
+
 
 @router.get("/health", response_model=HealthResponse, summary="Liveness and DB readiness")
 async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
+    """Liveness probe.
+
+    Only a bounded ``SELECT 1`` is executed. This handler never calls Gemini or
+    any other external service, so an in-flight LLM request can never delay the
+    frontend's health poller.
+    """
     database = "ok"
     try:
-        await db.execute(text("SELECT 1"))
-    except Exception:  # noqa: BLE001
+        await asyncio.wait_for(
+            db.execute(text("SELECT 1")), timeout=_HEALTH_DB_TIMEOUT_SECONDS
+        )
+    except Exception:  # noqa: BLE001 - any probe failure means "unavailable"
         database = "unavailable"
 
     return HealthResponse(

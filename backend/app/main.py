@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -35,6 +36,7 @@ from app.db.base import Base
 from app.db.session import AsyncSessionLocal, dispose_engine, engine, get_db
 from app.models import __all__ as _model_registry  # noqa: F401 - registers ORM models
 from app.schemas.common import HealthResponse
+from app.services.gemini_service import get_gemini_service
 from app.services.mitre_service import seed_catalog
 
 logger = logging.getLogger(__name__)
@@ -62,6 +64,21 @@ async def lifespan(_: FastAPI):
                 count = await seed_catalog(session)
                 await session.commit()
             logger.info("MITRE ATT&CK catalog ready (%s techniques)", count)
+
+        # Warm one pooled connection so the first health probe is not delayed by
+        # database connection setup (SQLite file open / PostgreSQL handshake).
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        logger.info("Database connection pool warmed")
+
+        if settings.gemini_enabled:
+            # Import/build the SDK before serving traffic so the first request
+            # cannot block the event loop (and the /health poller) for seconds.
+            warmed = await asyncio.to_thread(get_gemini_service().prewarm)
+            logger.info(
+                "Gemini client %s",
+                "pre-warmed" if warmed else "unavailable (offline fallback remains active)",
+            )
     except Exception:
         logger.exception(
             "Startup initialisation could not complete. The API will start in a degraded state; "

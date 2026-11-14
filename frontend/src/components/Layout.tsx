@@ -18,7 +18,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { api, getActor, setActor } from "../lib/api";
@@ -165,6 +165,10 @@ function BrandMark({ compact }: { compact?: boolean }) {
   );
 }
 
+const HEALTH_POLL_INTERVAL_MS = 30_000;
+// When a check fails, confirm quickly instead of waiting a full poll interval.
+const HEALTH_CONFIRM_RETRY_MS = 2_000;
+
 function HealthPill({ health, reachable }: { health: HealthResponse | null; reachable: boolean | null }) {
   if (reachable === null) {
     return (
@@ -178,7 +182,7 @@ function HealthPill({ health, reachable }: { health: HealthResponse | null; reac
     return (
       <Badge className="border-signal-contradicted/30 bg-signal-contradicted/10 text-signal-contradicted">
         <WifiOff size={11} />
-        API offline
+        API OFFLINE
       </Badge>
     );
   }
@@ -192,7 +196,7 @@ function HealthPill({ health, reachable }: { health: HealthResponse | null; reac
       )}
     >
       {degraded ? <WifiOff size={11} /> : <Wifi size={11} />}
-      {degraded ? "Degraded" : "Operational"}
+      {degraded ? "Degraded" : "API ONLINE"}
     </Badge>
   );
 }
@@ -206,6 +210,7 @@ export default function Layout() {
   const [actor, setActorState] = useState(getActor());
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [reachable, setReachable] = useState<boolean | null>(null);
+  const failureCount = useRef(0);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -213,24 +218,52 @@ export default function Layout() {
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
+    let retryTimer: number | undefined;
+
     const check = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const next = await api.health();
-        if (!cancelled) {
-          setHealth(next);
-          setReachable(true);
-        }
+        if (cancelled) return;
+        // A single good response restores the badge immediately.
+        failureCount.current = 0;
+        setHealth(next);
+        setReachable(true);
       } catch {
-        if (!cancelled) {
+        if (cancelled) return;
+        failureCount.current += 1;
+        // Require two consecutive failures so a hot reload, tab wake-up, or
+        // brief network blip never flips the badge to offline.
+        if (failureCount.current >= 2) {
           setReachable(false);
+        } else {
+          window.clearTimeout(retryTimer);
+          retryTimer = window.setTimeout(() => void check(), HEALTH_CONFIRM_RETRY_MS);
         }
+      } finally {
+        inFlight = false;
       }
     };
+
     void check();
-    const timer = window.setInterval(() => void check(), 30_000);
+    const timer = window.setInterval(() => void check(), HEALTH_POLL_INTERVAL_MS);
+
+    // Re-check as soon as the tab becomes visible or regains focus, so a
+    // backgrounded tab never shows a stale offline badge.
+    const recheckOnFocus = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", recheckOnFocus);
+    window.addEventListener("focus", recheckOnFocus);
+
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.clearTimeout(retryTimer);
+      document.removeEventListener("visibilitychange", recheckOnFocus);
+      window.removeEventListener("focus", recheckOnFocus);
     };
   }, []);
 
