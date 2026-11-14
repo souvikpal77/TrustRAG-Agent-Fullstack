@@ -36,6 +36,9 @@ class Settings(BaseSettings):
         "http://localhost:5173,http://localhost:8080,"
         "http://127.0.0.1:5173,http://127.0.0.1:8080"
     )
+    # Optional regex for ephemeral frontend deployments (Vercel production and
+    # preview URLs). Set to an empty string to allow explicit origins only.
+    cors_origin_regex: str = r"https://([a-z0-9-]+\.)*vercel\.app"
 
     # ------------------------------------------------------------- database
     database_url: str = (
@@ -104,6 +107,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return _split_csv(self.cors_origins)
+
+    @property
+    def cors_origin_regex_value(self) -> str | None:
+        """Regex passed to Starlette's CORSMiddleware, or ``None`` when disabled."""
+        pattern = (self.cors_origin_regex or "").strip()
+        return pattern or None
 
     @property
     def gemini_model_list(self) -> list[str]:

@@ -31,6 +31,7 @@ services:
       DEBUG: ${DEBUG:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      CORS_ORIGIN_REGEX: '${CORS_ORIGIN_REGEX:-https://([a-z0-9-]+\.)*vercel\.app}'
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-trustrag}:${POSTGRES_PASSWORD:-trustrag_dev_password}@db:5432/${POSTGRES_DB:-trustrag}
       DB_ECHO: ${DB_ECHO:-false}
       AUTO_CREATE_SCHEMA: "false"

@@ -132,6 +132,7 @@ trustrag-agent/
 │   │   └── pages/                # nine analyst workspaces
 │   ├── Dockerfile
 │   ├── nginx.conf
+│   ├── vercel.json               # Vercel rewrites (API proxy + SPA fallback)
 │   └── vite.config.ts
 ├── docker-compose.yml
 ├── .env.example
@@ -294,6 +295,7 @@ All settings are read from environment variables or a `.env` file (`backend/.env
 | `DEBUG` | `false` | Verbose diagnostics |
 | `LOG_LEVEL` | `INFO` | Python log level |
 | `CORS_ORIGINS` | localhost dev origins | Comma-separated allowed browser origins |
+| `CORS_ORIGIN_REGEX` | `https://([a-z0-9-]+\.)*vercel\.app` | Regex for ephemeral frontend domains (Vercel production/preview); set empty to disable |
 
 ### Database
 
@@ -344,6 +346,78 @@ All settings are read from environment variables or a `.env` file (`backend/.env
 | `MAX_CLAIMS_PER_ANSWER` | `15` | Claim decomposition cap |
 | `MAX_UPLOAD_MB` | `25` | Upload size limit |
 | `SEED_MITRE` | `true` | Seed the ATT&CK catalogue at startup |
+
+---
+
+## Deployment (Vercel frontend + Render backend)
+
+The frontend is a static Vite build; the backend is a FastAPI service. They are deployed independently and joined by Vercel rewrites, so the browser only ever talks to the Vercel origin and no API key or backend hostname is exposed to the client.
+
+### 1. Backend on Render
+
+Create a **Web Service** from this repository:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `backend` |
+| Environment | Python |
+| Build command | `pip install -r requirements.txt` |
+| Start command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'` |
+| Health check path | `/api/health` |
+
+Environment variables (Render dashboard → Environment):
+
+```dotenv
+ENVIRONMENT=production
+DEBUG=false
+ALLOW_OFFLINE_LLM_FALLBACK=false
+GOOGLE_API_KEY=<your key>
+GEMINI_MODELS=gemini-3.5-flash-lite,gemini-3.8-flash
+DATABASE_URL=<managed PostgreSQL async URL>
+AUTO_CREATE_SCHEMA=false
+SEED_MITRE=true
+CORS_ORIGINS=https://<your-project>.vercel.app
+CORS_ORIGIN_REGEX=https://([a-z0-9-]+\.)*vercel\.app
+```
+
+Run `alembic upgrade head` as a one-off job or release step before the first deploy (`AUTO_CREATE_SCHEMA` stays `false` in production). Render's free tier sleeps when idle; the frontend health poller tolerates the cold start and re-checks on tab focus.
+
+> `CORS_ORIGINS` only matters for direct browser calls to the Render URL. Because Vercel rewrites proxy `/api/*` server-side, normal UI traffic is same-origin. The regex still keeps Vercel preview deployments working if they call the API directly.
+
+### 2. Frontend on Vercel
+
+Create a **Vercel project** from the same repository:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `frontend` |
+| Framework preset | Vite |
+| Build command | `npm run build` |
+| Output directory | `dist` |
+
+`frontend/vercel.json` supplies the routing:
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://trustrag-api.onrender.com/api/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+The first rule proxies every API call to Render; the second is the SPA fallback so client-side routes (for example `/evaluation`) survive a hard refresh. Leave `VITE_API_BASE_URL` unset in Vercel so the app calls `/api` on its own origin.
+
+> If your Render service has a different hostname, update the rewrite destination in `frontend/vercel.json` and redeploy.
+
+### 3. Verify the deployment
+
+```bash
+curl -s https://<your-project>.vercel.app/api/health      # -> {"status":"ok",...}
+curl -s -o /dev/null -w '%{http_code}\n' https://<your-project>.vercel.app/evaluation   # -> 200 (SPA fallback)
+```
 
 ---
 
@@ -548,7 +622,7 @@ npm run build
 - **The audit log is append-only by application design.** Each row hashes the previous row; PostgreSQL advisory locking serialises concurrent appends; `/api/audit/verify` recomputes the chain.
 - **Uploads are bounded** by `MAX_UPLOAD_MB` and parsed from memory; only PDF/TXT/Markdown are accepted.
 - **Errors use a stable envelope** with request IDs; internal stack traces are not returned to clients.
-- **CORS is explicitly configured.** Replace the development origins before production.
+- **CORS is explicitly configured.** Development origins are always allowed; production origins come from `CORS_ORIGINS`, and `CORS_ORIGIN_REGEX` covers Vercel production/preview domains. Set the regex to an empty string to restrict access to explicit origins only.
 - **The API currently has no end-user authentication.** `X-Actor` is attribution, not authorization. Put the stack behind an identity-aware proxy or add OIDC/auth before exposing it.
 
 For production:
@@ -556,7 +630,7 @@ For production:
 1. Use a strong `POSTGRES_PASSWORD` and a managed secret store.
 2. Set `ENVIRONMENT=production`, `DEBUG=false`, `ALLOW_OFFLINE_LLM_FALLBACK=false`.
 3. Run Alembic migrations as a deployment step; keep `AUTO_CREATE_SCHEMA=false`.
-4. Terminate TLS in front of nginx and restrict `CORS_ORIGINS`.
+4. Terminate TLS in front of the app and restrict `CORS_ORIGINS` / `CORS_ORIGIN_REGEX`.
 5. Add authentication/authorization and per-analyst rate limits.
 6. Back up PostgreSQL and export/verify the audit chain regularly.
 

@@ -105,7 +105,8 @@ app = FastAPI(
 
 # Browser dev origins are always permitted so the Vite app can reach the API
 # whether it is opened as localhost or 127.0.0.1. Additional origins come from
-# CORS_ORIGINS in the environment.
+# CORS_ORIGINS in the environment, and CORS_ORIGIN_REGEX covers ephemeral Vercel
+# production/preview domains (e.g. https://trustrag.vercel.app).
 _CORS_ORIGINS = list(
     dict.fromkeys(
         [
@@ -119,6 +120,7 @@ _CORS_ORIGINS = list(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
+    allow_origin_regex=settings.cors_origin_regex_value,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
