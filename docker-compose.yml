@@ -1,0 +1,90 @@
+name: trustrag-agent
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: trustrag-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trustrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustrag_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-trustrag}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - trustrag_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trustrag} -d ${POSTGRES_DB:-trustrag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trustrag-backend
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-trustrag}:${POSTGRES_PASSWORD:-trustrag_dev_password}@db:5432/${POSTGRES_DB:-trustrag}
+      DB_ECHO: ${DB_ECHO:-false}
+      AUTO_CREATE_SCHEMA: "false"
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_MODELS: ${GEMINI_MODELS:-gemini-3.8-flash,gemini-3.5-flash-lite}
+      GEMINI_TEMPERATURE: ${GEMINI_TEMPERATURE:-0.2}
+      GEMINI_MAX_OUTPUT_TOKENS: ${GEMINI_MAX_OUTPUT_TOKENS:-2048}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-30}
+      GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-2}
+      ALLOW_OFFLINE_LLM_FALLBACK: ${ALLOW_OFFLINE_LLM_FALLBACK:-true}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-hashing}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-384}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      CHUNK_SIZE: ${CHUNK_SIZE:-1400}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-220}
+      CHUNK_MIN_SIZE: ${CHUNK_MIN_SIZE:-200}
+      RETRIEVAL_DEFAULT_TOP_K: ${RETRIEVAL_DEFAULT_TOP_K:-8}
+      RETRIEVAL_SEMANTIC_WEIGHT: ${RETRIEVAL_SEMANTIC_WEIGHT:-0.6}
+      RETRIEVAL_MAX_CANDIDATES: ${RETRIEVAL_MAX_CANDIDATES:-20000}
+      TRUST_ABSTAIN_THRESHOLD: ${TRUST_ABSTAIN_THRESHOLD:-40}
+      TRUST_REVIEW_THRESHOLD: ${TRUST_REVIEW_THRESHOLD:-65}
+      ENTAILMENT_SUPPORT_THRESHOLD: ${ENTAILMENT_SUPPORT_THRESHOLD:-0.55}
+      MAX_CLAIMS_PER_ANSWER: ${MAX_CLAIMS_PER_ANSWER:-15}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      SEED_MITRE: ${SEED_MITRE:-true}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    container_name: trustrag-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  trustrag_pgdata:
+    name: trustrag_pgdata
