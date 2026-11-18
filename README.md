@@ -404,7 +404,7 @@ Create a **Vercel project** from the same repository:
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://trustrag-api.onrender.com/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://trustrag-api-glcf.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
@@ -412,7 +412,9 @@ Create a **Vercel project** from the same repository:
 
 The first rule proxies every API call to Render; the second is the SPA fallback so client-side routes (for example `/evaluation`) survive a hard refresh. Leave `VITE_API_BASE_URL` unset in Vercel so the app calls `/api` on its own origin.
 
-> If your Render service has a different hostname, update the rewrite destination in `frontend/vercel.json` and redeploy.
+> **The rewrite host must match the Render service exactly.** Render assigns a service-specific subdomain (`trustrag-api-glcf.onrender.com` here); the generic `trustrag-api.onrender.com` resolves but has no service behind it and returns 404/502. Copy the URL from the Render dashboard → your service → **Settings → Public URL**.
+>
+> **Render free tier sleeps after ~15 minutes of inactivity.** The first request after sleep can exceed Vercel's proxy timeout and surface as `502`, even though the backend is healthy once awake. The frontend retries on focus and after a failed health check; for reliable first-load behaviour, point an uptime monitor at `https://<render-service>.onrender.com/api/health` every 5–10 minutes (Render's own health check does not prevent free-tier spin-down).
 
 ### 3. Verify the deployment
 
