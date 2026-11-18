@@ -24,20 +24,5 @@ USER trustrag
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
-
-# Switch back to root to create the system user and set permissions
-USER root
-
-# Create and switch to the non-root user
-RUN addgroup --system trustrag && adduser --system --ingroup trustrag trustrag \
-    && chown -R trustrag:trustrag /app
-
-# Switch to the non-root user for running the app
-USER trustrag
-
-# Expose port
-EXPOSE 8000
-
-# Run database migrations first, then start Uvicorn directly
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Apply migrations, then start the API on the port Render provides.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
