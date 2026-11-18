@@ -12,6 +12,7 @@ TrustRAG-Agent is built for SOC and CTI analysts who cannot afford confident-sou
 - [Architecture](#architecture)
 - [Feature overview](#feature-overview)
 - [Repository layout](#repository-layout)
+- [Detailed documentation](#detailed-documentation)
 - [Quickstart with Docker Compose](#quickstart-with-docker-compose)
 - [Local development](#local-development)
 - [Configuration](#configuration)
@@ -123,21 +124,39 @@ trustrag-agent/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
+│   ├── .env.example
 │   └── pytest.ini
 ├── frontend/
 │   ├── src/
 │   │   ├── components/           # layout, UI primitives, charts, badges
 │   │   ├── hooks/                # typed resource loader
 │   │   ├── lib/                  # API client, types, formatting, tones
+│   │   ├── test/                 # Vitest setup
 │   │   └── pages/                # nine analyst workspaces
+│   ├── tests/                    # Vitest + React Testing Library suite
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   ├── vercel.json               # Vercel rewrites (API proxy + SPA fallback)
+│   ├── vitest.config.ts
 │   └── vite.config.ts
+├── database/                     # database documentation (Alembic is authoritative)
+├── docs/                         # architecture, API, schema, deployment
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
 ```
+
+---
+
+## Detailed documentation
+
+| Document | Contents |
+| --- | --- |
+| [`docs/architecture/overview.md`](docs/architecture/overview.md) | Requirements, component responsibilities, request flows, AI pipeline, design decisions |
+| [`docs/api/endpoints.md`](docs/api/endpoints.md) | Full endpoint contract, conventions, error envelope, status codes |
+| [`docs/database/schema.md`](docs/database/schema.md) | Tables, relationships, constraints, indexes, transactions, migrations |
+| [`docs/deployment/README.md`](docs/deployment/README.md) | Render + Vercel setup, environment variables, 502 diagnosis, rollback |
+| [`database/README.md`](database/README.md) | Why Alembic is the only schema authority, seed locations |
 
 ---
 
@@ -613,8 +632,13 @@ Frontend verification:
 ```bash
 cd frontend
 npm run typecheck
+npm test
 npm run build
 ```
+
+The Vitest + React Testing Library suite covers formatting utilities, badge
+rendering, and the `useResource`/`useDebounced` hooks, including error and
+disabled states. It runs in jsdom with no backend required.
 
 ---
 
